@@ -1,0 +1,37 @@
+{
+  "name": "auth0r",
+  "version": "0.0.1",
+  "description": "Auth0r is a plug-in play package that will handle user authorizations and requests.",
+  "main": "./dist/index.js",
+  "scripts": {
+    "start": "tsc && node -r esm ./dist/index.js",
+    "test": "mocha -r ts-node/register tests/**/*.spec.ts"
+  },
+  "keywords": [
+    "authorization",
+    "auth",
+    "JWT"
+  ],
+  "author": "pritch9",
+  "license": "MIT",
+  "devDependencies": {
+    "@types/bcrypt": "^3.0.0",
+    "@types/chai": "^4.1.7",
+    "@types/mocha": "^5.2.7",
+    "@types/node": "^12.6.9",
+    "chai": "^4.2.0",
+    "mocha": "^6.2.0",
+    "ts-node": "^8.3.0"
+  },
+  "dependencies": {
+    "bcrypt": "^3.0.6",
+    "email-validator": "^2.0.4",
+    "esm": "^3.2.25",
+    "jsonwebtoken": "^8.5.1",
+    "knex": "^0.19.1",
+    "nodemailer": "^6.3.0",
+    "sqlite3": "^4.0.9",
+    "tslint": "^5.18.0",
+    "typescript": "^3.5.3"
+  }
+}
