@@ -21,16 +21,21 @@
     "@types/node": "^12.6.9",
     "chai": "^4.2.0",
     "mocha": "^6.2.0",
+    "sqlite3": "^4.0.9",
     "ts-node": "^8.3.0"
   },
   "dependencies": {
     "bcrypt": "^3.0.6",
+    "data.task": "^3.1.2",
+    "deasync": "^0.1.15",
     "email-validator": "^2.0.4",
     "esm": "^3.2.25",
+    "fibers": "^4.0.1",
+    "jsjws": "^6.0.0",
     "jsonwebtoken": "^8.5.1",
     "knex": "^0.19.1",
     "nodemailer": "^6.3.0",
-    "sqlite3": "^4.0.9",
+    "npm": "^6.10.3",
     "tslint": "^5.18.0",
     "typescript": "^3.5.3"
   }

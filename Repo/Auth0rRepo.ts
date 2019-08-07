@@ -1,11 +1,28 @@
-import Knex from 'knex';
+import Knex, {TableBuilder} from 'knex';
 import {ENV, error, getEnv, log, warn} from "../src/Utilities/Utilities";
 import bcrypt from 'bcrypt';
 import {Auth0r} from "../src";
 import email_validator from "email-validator";
+import deasync from 'deasync';
 
 let dev = getEnv() === ENV.DEVELOPMENT;
 let knex: Knex = undefined; // protected static variable
+
+let table_schemas = {
+	Users: (user_identifier: string) => (table: TableBuilder) => {
+		table.increments('id');
+		table.string(user_identifier);
+		table.binary('password', 60);
+		table.string('o', 32);
+	},
+	Auth0r_Log: () => (table: TableBuilder) => {
+		table.increments('id');
+		table.string('identifier');
+		table.string('prod_error');
+		table.string('dev_error');
+		table.string('message');
+	}
+};
 
 class Auth0rRepoOptions {
 	connection: any;
@@ -16,6 +33,9 @@ export class Auth0rRepo {
 	protected static knex: any;
 	private readonly user_identifier: string;
 	private logger: Auth0rLogger;
+	protected _ready = false;
+	public set ready(ready: boolean) { }
+	public get ready() { return this._ready; }
 	private errors = {
 		INVALID_CREDS: undefined,
 		DATABASE_ERROR: new Error('Oops, double check that the database is up and running. \
@@ -42,7 +62,15 @@ export class Auth0rRepo {
 			user_identifier: this.user_identifier
 		});
 		this.initErrors();
-		this.initDatabase();
+		warn('Waiting for database confirmation... this may take a while');
+		let initDatabaseSync = deasync(this.initDatabase);
+
+		try {
+			initDatabaseSync(this);
+			this._ready = true;
+		} catch (err) {
+			error('Initialization of database failed!  Check logs for more info');
+		}
 	}
 
 	private initErrors() {
@@ -167,62 +195,45 @@ export class Auth0rRepo {
 		setTimeout(() => this.logger.logError(user_id, func, prodError, devError ? devError : prodError));
 	}
 
-	private initDatabase() {
-		// Tables needed:
-		//		Users
-		//			id
-		//			user_identifier
-		//			password
-		//			o
-		//
-		//		Auth0r_Log
-		//			user_id
-		//			func
-		//			prod_error
-		//			dev_error
-		//			message
-		log('------- [Auth0r] Loading Database -------');
-		log('[Table: Users] checking table existence...');
-		knex.schema.hasTable('Users').then((exists) => {
-			if (!exists) {
-				warn('[Table: Users] table does not exist - creating...');
-				knex.schema.createTable('Users', (table) => {
-					table.increments('id');
-					table.string(this.user_identifier);
-					table.binary('password', 60);
-					table.string('o', 32);
-				}).then(() => {
-					// success
-					log('[Table: Users] `Users` table created!');
-				}).catch((err) => {
-					// failure (probably table exists)
-					error(err);
-				});
-			} else {
-				log('[Table: Users] Table exists, continuing');
+	private async initDatabase(repo: Auth0rRepo, cb: (err, result) => void) {
+		warn('Initializing database...');
+		try {
+			await knex.raw('SELECT 1+1 AS result');
+			log('Connection successful.');
+		} catch (err) {
+			repo.logger.logError('DATABASE_CONNECTION', 'initDatabase', err, err);
+			cb(new Error('Unable to connect to database!  Please double check your connection settings.'), null);
+		}
+		log();
+		log('Checking table existence ...');
+		for (let table of Object.keys(table_schemas)) {
+			log();
+			log(`Does \`${table}\` exist?`);
+			let exists = false;
+			try {
+				exists = await knex.schema.hasTable(table);
+			} catch (err) {
+				repo.logger.logError(table, 'initDatabase', err, err);
+				cb(new Error(`Unable to check table \`${table}\`!  Check console to see error message.`), null);
 			}
-		});
-
-		log('[Table: Auth0r_Log] checking table existence...');
-		knex.schema.hasTable('Auth0r_Log').then((exists) => {
 			if (!exists) {
-				warn('[Table: Auth0r_Log] table does not exist - creating...');
-				knex.schema.createTable('Auth0r_Log', (table) => {
-					table.increments('id');
-					table.string('user_id');
-					table.string('prod_error');
-					table.string('dev_error');
-					table.string('message');
-				}).then(() => {
-					// Success
-					log('[Table: Auth0r_Log] `Auth0r_Log` table created!');
-				}).catch(err => {
-					error(err);
-				});
+				// Table does not exist
+				log('no ... creating table');
+				try {
+					await knex.schema.createTable(table, table_schemas[table](repo.user_identifier));
+					log(`Table \`${table}\` created!`);
+				} catch (err) {
+					repo.logger.logError(table, 'initDatabase', err, err);
+					cb(new Error(`Unable to create table \`${table}\`!  Check console to see error message.`), null);
+				}
 			} else {
-				log('[Table: Auth0r_Log] Table exists, continuing');
+				log('yes ... continuing');
 			}
-		});
+		}
+		log();
+		log('done.');
+		log();
+		cb(null, true);
 	}
 }
 class Auth0rLoggerOptions {
@@ -235,10 +246,10 @@ class Auth0rLogger {
 		this.user_identifier = options.user_identifier;
 	}
 
-	logError(user_id: string, func: string, prodError: Error, devError: Error) {
+	logError(identifier: string, func: string, prodError: Error, devError: Error) {
 		if (dev) {
 			error(`============ Error ============\n
-                            \tUser:\t${user_id}\n
+                            \tIdentifier:\t${identifier}\n
                             \tFunction:\t${func}\n
                             \tProd Error:\t${prodError.name}\n
                             \tDev Error:\t${devError.name}\n
@@ -246,7 +257,7 @@ class Auth0rLogger {
                             ===============================`)
 		} else {
 			knex.table('Auth0r_Log')
-				.insert({user_id, func, prod_error: prodError.name, dev_error: devError.name, message: devError.message }).catch((err) => {
+				.insert({identifier, func, prod_error: prodError.name, dev_error: devError.name, message: devError.message }).catch((err) => {
 				error(err);
 			});
 		}
