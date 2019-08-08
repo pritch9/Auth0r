@@ -27,21 +27,27 @@ export class Auth0rOptions {
  */
 
 export class Auth0r {
-    private readonly public_key: string;
-    private readonly private_key: string;
+    private readonly public_key_file: string;
+    private readonly private_key_file: string;
+    protected readonly public_key: string;
+    protected readonly private_key: string;
     private readonly issuer: string;
     private repo: Auth0rRepo;
-    private generateKeyPairSync;
+    private readonly generateKeyPairSync;
 
     constructor(options: Auth0rOptions) {
-        this.public_key = options.public_key;
-        this.private_key = options.private_key;
-        this.generateKeyPairSync = deasync(Auth0r.generateKeyPair);
-        if (!checkRSAKeys(this.public_key, this.private_key)) {
-            error('Soo, your keys are no bueno.  We will generate new keys');
-            let { pub, priv } = this.generateKeyPairSync();
-            this.public_key = pub;
-            this.private_key = priv;
+        this.generateKeyPairSync = deasync(this.generateKeyPair);
+        if (!checkRSAKeys(options.public_key, options.private_key)) {
+            // key file
+            this.public_key_file = options.public_key;
+            this.private_key_file = options.private_key;
+            let { public_key, private_key } = this.generateKeyPairSync();
+            this.public_key = public_key;
+            this.private_key = private_key;
+        } else {
+            // key literal
+            this.public_key = options.public_key;
+            this.private_key = options.private_key;
         }
 
         this.issuer = options.issuer;
@@ -127,18 +133,17 @@ export class Auth0r {
         return crypto.randomBytes(24).toString('base64');
     }
 
-    private static async generateKeyPair(cb: (err, result) => void) {
-        let public_key: string, private_key: string;
-
-        let pubKeyFile = path.resolve(__dirname, '../rsa_keys/pubkey.pem');
-        let privKeyFile = path.resolve(__dirname, '../rsa_keys/privkey.pem');
+    private async generateKeyPair(cb: (err, result) => void) {
+        let pub: string, priv: string;
+        let pubKeyFile = this.public_key || path.resolve(__dirname, '../rsa_keys/pubkey.pem');
+        let privKeyFile = this.private_key || path.resolve(__dirname, '../rsa_keys/privkey.pem');
         let genNewKeys = true;
 
         if (fs.existsSync(pubKeyFile) && fs.existsSync(privKeyFile)) {
-            public_key = fs.readFileSync(pubKeyFile).toString('utf-8');
-            private_key = fs.readFileSync(privKeyFile).toString('utf-8');
+            pub = fs.readFileSync(pubKeyFile).toString('utf-8');
+            priv = fs.readFileSync(privKeyFile).toString('utf-8');
 
-            if (checkRSAKeys(public_key, private_key)) {
+            if (checkRSAKeys(pub, priv)) {
                 genNewKeys = false;
             } else {
                 // Check rsa keys not good when loading already created private keys.
@@ -147,20 +152,28 @@ export class Auth0r {
         }
         if (genNewKeys) {
             let key = jsjws.generatePrivateKey(2048, 65537);
-            public_key = key.toPublicPem();
-            private_key = key.toPrivatePem();
+            pub = key.toPublicPem();
+            priv = key.toPrivatePem();
 
             try {
                 fs.mkdirSync(path.resolve(__dirname, '../rsa_keys'));
-                fs.writeFileSync(pubKeyFile, public_key);
-                fs.writeFileSync(privKeyFile, private_key);
+                fs.writeFileSync(pubKeyFile, pub);
+                fs.writeFileSync(privKeyFile, priv);
             } catch (err) {
                 error(err);
                 cb(new Error('Unable to initialize RSA Key pair!  Auth0r will not work correctly!'), null);
             }
         }
 
-        cb(null, { public_key, private_key });
+        cb(null, { public_key: pub, private_key: priv });
+    }
+
+    static compareKeyTwins(auth0rInstance: Auth0r, auth0rInstance2: Auth0r) {
+        return Auth0r.compareKeys(auth0rInstance, auth0rInstance2.public_key, auth0rInstance2.private_key);
+    }
+
+    static compareKeys(auth0rInstance: Auth0r, public_key: string, private_key: string) {
+        return auth0rInstance.public_key == public_key && auth0rInstance.private_key == private_key;
     }
 
 }

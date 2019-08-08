@@ -6,19 +6,104 @@ import path from 'path';
 import {log, error} from "../src/Utilities/Utilities";
 import Knex from 'knex';
 import bcrypt from 'bcrypt';
+import crypto from 'crypto';
 
 let dir = __dirname;
 
 describe('Auth0r Test Suite', function() {
 	let connection: any;
 
-	before(function() {
-		rimraf(path.resolve(__dirname, '../rsa_keys'));
+	before(async function() {
+		let key_folder = path.resolve(__dirname, '../rsa_keys');
+		rimraf(key_folder);
+		expect(fs.existsSync(key_folder)).to.be.false;
 	});
 	beforeEach(function() {
 		// delete old database
 		process.env.NODE_ENV="development";
 		connection = newTestDatabase();
+	});
+	it('should generate RSA tokens if none exist', function() {
+		let equal_instances = [
+			new Auth0r({
+				issuer: 'test',
+				user_identifier: 'username',
+				connection
+			}),
+			new Auth0r({
+				issuer: 'test',
+				user_identifier: 'username',
+				public_key: 'df',
+				connection
+			}),
+			new Auth0r({
+				issuer: 'test',
+				user_identifier: 'username',
+				private_key: 'sdfg',
+				connection
+			}),
+			new Auth0r({
+				issuer: 'test',
+				user_identifier: 'username',
+				private_key: 'fasf',
+				public_key: 'asdf',
+				connection
+			}),
+			new Auth0r({
+				issuer: 'test',
+				user_identifier: 'username',
+				private_key: '',
+				public_key: '',
+				connection
+			})
+		];
+		let compareFn;
+		for (let x of equal_instances) {
+			if (compareFn != undefined) {
+				expect(compareFn(x)).to.be.true;
+			}
+			compareFn = (y) => Auth0r.compareKeyTwins(x, y);
+		}
+		let auth0r = equal_instances[0];
+		expect(fs.existsSync(path.resolve(__dirname, '../rsa_keys'))).to.be.true;
+		let keys = {
+			public_key:  path.resolve(__dirname, '../rsa_keys/pubkey.pem'),
+			private_key:  path.resolve(__dirname, '../rsa_keys/privkey.pem')
+		};
+		expect(fs.existsSync(keys.public_key)).to.be.true;
+		expect(fs.existsSync(keys.private_key)).to.be.true;
+		for (let key of Object.keys(keys)) {
+			let contents = fs.readFileSync(keys[key], { encoding: 'utf-8' });
+			expect(crypto[key === "private_key" ? "createPrivateKey" : "createPublicKey"](contents)).to.not.throw;
+		}
+	});
+	it('should use provided RSA token files', async function() {
+		let pub_key = path.resolve(__dirname, './test_rsa_valid/pubkey.pem');
+		let priv_key = path.resolve(__dirname, './test_rsa_valid/privkey.pem');
+		let auth0r = new Auth0r({
+			issuer: '',
+			user_identifier: 'username',
+			connection,
+			public_key: pub_key,
+			private_key: priv_key
+		});
+		let pub_contents = fs.readFileSync(pub_key, { encoding: "UTF-8" });
+		let priv_contents = fs.readFileSync(pub_key, { encoding: "UTF-8" });
+		expect(Auth0r.compareKeys(auth0r, pub_contents, priv_contents));
+	});
+	it('should use provided rsa key strings', async function() {
+		let pub_key = path.resolve(__dirname, './test_rsa_valid/pubkey.pem');
+		let priv_key = path.resolve(__dirname, './test_rsa_valid/privkey.pem');
+		let pub_contents = fs.readFileSync(pub_key, { encoding: "UTF-8" });
+		let priv_contents = fs.readFileSync(pub_key, { encoding: "UTF-8" });
+		let auth0r = new Auth0r({
+			issuer: '',
+			user_identifier: 'username',
+			connection,
+			public_key: pub_contents,
+			private_key: priv_contents
+		});
+		expect(Auth0r.compareKeys(auth0r, pub_contents, priv_contents));
 	});
 	it('should generate a random opaque key', function() {
 		let hashMap = {};
