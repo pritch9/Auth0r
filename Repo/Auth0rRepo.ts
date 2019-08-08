@@ -30,11 +30,10 @@ class Auth0rRepoOptions {
 }
 
 export class Auth0rRepo {
-	protected static knex: any;
 	private readonly user_identifier: string;
 	private logger: Auth0rLogger;
 	protected _ready = false;
-	public set ready(ready: boolean) { }
+	// public set ready(ready: boolean) { }
 	public get ready() { return this._ready; }
 	private errors = {
 		INVALID_CREDS: undefined,
@@ -63,7 +62,7 @@ export class Auth0rRepo {
 		});
 		this.initErrors();
 		warn('Waiting for database confirmation... this may take a while');
-		let initDatabaseSync = deasync(this.initDatabase);
+		let initDatabaseSync = deasync(Auth0rRepo.initDatabase);
 
 		try {
 			initDatabaseSync(this);
@@ -195,7 +194,7 @@ export class Auth0rRepo {
 		setTimeout(() => this.logger.logError(user_id, func, prodError, devError ? devError : prodError));
 	}
 
-	private async initDatabase(repo: Auth0rRepo, cb: (err, result) => void) {
+	private static async initDatabase(repo: Auth0rRepo, cb: (err, result) => void) {
 		warn('Initializing database...');
 		try {
 			await knex.raw('SELECT 1+1 AS result');

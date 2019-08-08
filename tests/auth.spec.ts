@@ -1,4 +1,4 @@
-import {expect, should, assert} from "chai";
+import {expect} from "chai";
 import { Auth0r } from "../src";
 import { fail } from "assert";
 import fs from 'fs';
@@ -82,7 +82,6 @@ describe('Auth0r StartUp Suite', function() {
 			}
 			compareFn = (y) => Auth0r.compareKeyTwins(x, y);
 		}
-		let auth0r = equal_instances[0];
 		expect(fs.existsSync(key_folder)).to.be.true;
 		let keys = {
 			public_key:  path.resolve(__dirname, '../rsa_keys/pubkey.pem'),
@@ -113,7 +112,7 @@ describe('Auth0r StartUp Suite', function() {
 		let pub_key = path.resolve(__dirname, './test_rsa_valid/pubkey.pem');
 		let priv_key = path.resolve(__dirname, './test_rsa_valid/privkey.pem');
 		let pub_contents = fs.readFileSync(pub_key, { encoding: "UTF-8" });
-		let priv_contents = fs.readFileSync(pub_key, { encoding: "UTF-8" });
+		let priv_contents = fs.readFileSync(priv_key, { encoding: "UTF-8" });
 		let auth0r = new Auth0r({
 			issuer: '',
 			user_identifier: 'username',
@@ -313,20 +312,27 @@ describe('Auth0r StartUp Suite', function() {
 		dbOpaque = dbOpaque[0].o;
 		expect(dbOpaque).to.equal(request.body.o);
 	});
-
+	it('should intercept unauthorized traffic', async function() {
+		let auth0r = new Auth0r({
+			issuer: 'test',
+			connection
+		});
+		let request = {
+			headers: {
+				authorization: ''
+			}
+		};
+		let response = {};
+		let next = (request, response) => {
+			expect(request).to.not.be.undefined;
+			expect(response).to.not.be.undefined;
+		};
+		await auth0r.middleware(request, response, next);
+	});
 	after(async function() {
 		deleteTestDatabase();
 	});
 });
-
-class Response {
-	data: any;
-	constructor() {}
-
-	send(data) {
-		this.data = data;
-	}
-}
 
 function deleteTestDatabase() {
 	log(`Deleting ${test_db.toString()}`);
@@ -345,7 +351,9 @@ function newTestDatabase() {
 	fs.copyFileSync(test_db_empty, test_db);
 	log(fs.existsSync(test_db) ? 'Database now exists!' : 'Database does not exist');
 	return test_db;
-}/**
+}
+
+/**
  * Remove directory recursively
  * @param {string} dir_path
  * @see https://stackoverflow.com/a/42505874/3027390
@@ -353,7 +361,7 @@ function newTestDatabase() {
 function rimraf(dir_path) {
 	if (fs.existsSync(dir_path)) {
 		fs.readdirSync(dir_path).forEach(function(entry) {
-			var entry_path = path.join(dir_path, entry);
+			let entry_path = path.join(dir_path, entry);
 			if (fs.lstatSync(entry_path).isDirectory()) {
 				rimraf(entry_path);
 			} else {

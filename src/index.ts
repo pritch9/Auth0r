@@ -57,7 +57,7 @@ export class Auth0r {
         });
     }
 
-    middleware(req, res, next) {
+    public middleware(req, res, next) {
         if (env === ENV.DEVELOPMENT) log('Auth0r reading request');
         if (req.headers.authorization) { // TODO: IDK WTF THIS IS -\_(.>.)_/-
             let token_user = req.headers.authorization.split('Bearer: ')[1].split(':');
