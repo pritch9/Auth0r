@@ -30,11 +30,10 @@ class Auth0rRepoOptions {
 }
 
 export class Auth0rRepo {
-	protected static knex: any;
 	private readonly user_identifier: string;
 	private logger: Auth0rLogger;
 	protected _ready = false;
-	public set ready(ready: boolean) { }
+	// public set ready(ready: boolean) { }
 	public get ready() { return this._ready; }
 	private errors = {
 		INVALID_CREDS: undefined,
@@ -53,7 +52,7 @@ export class Auth0rRepo {
 		UNAUTHORIZED_ACCESS: new Error('Uh Oh!  Looks like something fishy is going on.  We are logging you out for your account safety.  For more info, please contact support and we would be happy to explain :)')
 
 	};
-	private static passwordRequirement = new RegExp(/(?=.*[a-z].*)(?=.*[A-Z].*)(?=.*[!@#$%^&*-+?].*)(?=[.*]{8,})/);
+	private static passwordRequirement = new RegExp(/(?=.*[a-z].*)(?=.*[A-Z].*)(?=.*[0-9].*)(?=.*[!@#$%^&*-+?].*).{8,}/);
 
 	constructor(options: Auth0rRepoOptions) {
 		knex = Knex(options.connection);
@@ -63,7 +62,7 @@ export class Auth0rRepo {
 		});
 		this.initErrors();
 		warn('Waiting for database confirmation... this may take a while');
-		let initDatabaseSync = deasync(this.initDatabase);
+		let initDatabaseSync = deasync(Auth0rRepo.initDatabase);
 
 		try {
 			initDatabaseSync(this);
@@ -121,15 +120,15 @@ export class Auth0rRepo {
 			let handleError = (prodError: Error, devError?: Error) => this.handleError(reject, user_id, 'verifyOpaque', prodError, (devError) ? devError : prodError);
 
 			knex.table('Users')
-				.select('opaque')
+				.select('o')
 				.where(this.user_identifier, user_id)
 				.then((result) => {
 					if (result.length) {
-						if(result[0] === token) {
+						if(result[0].o === token) {
 							// authorized user
 							request.body.o = Auth0r.generateOpaqueKey();
 							knex.table('Users')
-								.update('opaque', token).then(() => {
+								.update({o: request.body.o}).then(() => {
 									resolve(true);
 								}).catch((err) => handleError(this.errors.SERVER_ERROR, err));
 						} else {
@@ -137,7 +136,7 @@ export class Auth0rRepo {
 							devError.name = "UNAUTHORIZED_ACCESS";
 							handleError(this.errors.UNAUTHORIZED_ACCESS, devError);
 							knex.table('Users')
-								.update('opaque', undefined)
+								.update({o: null})
 								.then(() => { /* do nothing */ })
 								.catch((err) => this.logger.logError(user_id, 'verifyOpaque - set opaque', err, err))
 						}
@@ -151,12 +150,12 @@ export class Auth0rRepo {
 		return new Promise<string>((resolve, reject) => {
 			let handleError = (prodError: Error, devError?: Error) => this.handleError(reject, user_id, 'register', prodError, devError ? devError : prodError);
 
-			if (!email_validator.validate(user_id)) {
+			if (this.user_identifier === 'email' && !email_validator.validate(user_id)) {
 				handleError(this.errors.INVALID_EMAIL);
 				return;
 			}
 
-			if (!password.match(Auth0rRepo.passwordRequirement)) {
+			if (!Auth0rRepo.passwordRequirement.test(password)) {
 				handleError(this.errors.BAD_PASSWORD);
 				return;
 			}
@@ -195,7 +194,7 @@ export class Auth0rRepo {
 		setTimeout(() => this.logger.logError(user_id, func, prodError, devError ? devError : prodError));
 	}
 
-	private async initDatabase(repo: Auth0rRepo, cb: (err, result) => void) {
+	private static async initDatabase(repo: Auth0rRepo, cb: (err, result) => void) {
 		warn('Initializing database...');
 		try {
 			await knex.raw('SELECT 1+1 AS result');

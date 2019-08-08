@@ -57,7 +57,7 @@ export class Auth0r {
         });
     }
 
-    middleware(req, res, next) {
+    public middleware(req, res, next) {
         if (env === ENV.DEVELOPMENT) log('Auth0r reading request');
         if (req.headers.authorization) { // TODO: IDK WTF THIS IS -\_(.>.)_/-
             let token_user = req.headers.authorization.split('Bearer: ')[1].split(':');
@@ -90,7 +90,7 @@ export class Auth0r {
         };
         return jwt.sign(payload, this.private_key, signingOptions);
     }
-    private verifyToken(user_id: string, token: string, request): Promise<boolean> {
+    public verifyToken(user_id: string, token: string, request): Promise<boolean> {
         let verifyOptions = {
             issuer: this.issuer,
             subject:  'user',
@@ -121,11 +121,17 @@ export class Auth0r {
 
     public get dbReady() { return this.repo.ready };
 
-    private tryLogin(user_id: string, password: string) {
-        return this.repo.login(user_id, password);
+    public async tryLogin(user_id: string, password: string) {
+        let opaque;
+        try {
+            opaque = await this.repo.login(user_id, password);
+        } catch (err) {
+            throw err;
+        }
+        return this.signToken(user_id, opaque);
     }
 
-    private tryRegister(user_id, password) {
+    public async tryRegister(user_id, password) {
         return this.repo.register(user_id, password);
     }
 

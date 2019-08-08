@@ -1,4 +1,4 @@
-import {expect, should, assert} from "chai";
+import {expect} from "chai";
 import { Auth0r } from "../src";
 import { fail } from "assert";
 import fs from 'fs';
@@ -7,21 +7,25 @@ import {log, error} from "../src/Utilities/Utilities";
 import Knex from 'knex';
 import bcrypt from 'bcrypt';
 import crypto from 'crypto';
+import * as jwt from 'jsonwebtoken';
 
 let dir = __dirname;
 
-describe('Auth0r Test Suite', function() {
-	let connection: any;
+const test_db = path.resolve(dir, './test.db');
+const test_db_empty = path.resolve(dir, './test_empty.db');
+const key_folder = path.resolve(__dirname, '../rsa_keys');
+
+describe('Auth0r StartUp Suite', function() {
+	const connection = test_db;
 
 	before(async function() {
-		let key_folder = path.resolve(__dirname, '../rsa_keys');
-		rimraf(key_folder);
+		deleteRSAKeys();
 		expect(fs.existsSync(key_folder)).to.be.false;
 	});
 	beforeEach(function() {
 		// delete old database
 		process.env.NODE_ENV="development";
-		connection = newTestDatabase();
+		newTestDatabase();
 	});
 	it('should generate RSA tokens if none exist', function() {
 		let equal_instances = [
@@ -55,6 +59,20 @@ describe('Auth0r Test Suite', function() {
 				private_key: '',
 				public_key: '',
 				connection
+			}),
+			new Auth0r({
+				issuer: 'test',
+				user_identifier: 'email',
+				private_key: path.resolve(dir, './test_rsa_invalid/privkey.pem'),
+				public_key: path.resolve(dir, './test_rsa_invalid/privkey.pem'),
+				connection
+			}),
+			new Auth0r({
+				issuer: 'test',
+				user_identifier: 'email',
+				private_key: path.resolve(dir, './test_rsa_empty/privkey.pem'),
+				public_key: path.resolve(dir, './test_rsa_empty/privkey.pem'),
+				connection
 			})
 		];
 		let compareFn;
@@ -64,8 +82,7 @@ describe('Auth0r Test Suite', function() {
 			}
 			compareFn = (y) => Auth0r.compareKeyTwins(x, y);
 		}
-		let auth0r = equal_instances[0];
-		expect(fs.existsSync(path.resolve(__dirname, '../rsa_keys'))).to.be.true;
+		expect(fs.existsSync(key_folder)).to.be.true;
 		let keys = {
 			public_key:  path.resolve(__dirname, '../rsa_keys/pubkey.pem'),
 			private_key:  path.resolve(__dirname, '../rsa_keys/privkey.pem')
@@ -95,7 +112,7 @@ describe('Auth0r Test Suite', function() {
 		let pub_key = path.resolve(__dirname, './test_rsa_valid/pubkey.pem');
 		let priv_key = path.resolve(__dirname, './test_rsa_valid/privkey.pem');
 		let pub_contents = fs.readFileSync(pub_key, { encoding: "UTF-8" });
-		let priv_contents = fs.readFileSync(pub_key, { encoding: "UTF-8" });
+		let priv_contents = fs.readFileSync(priv_key, { encoding: "UTF-8" });
 		let auth0r = new Auth0r({
 			issuer: '',
 			user_identifier: 'username',
@@ -228,29 +245,115 @@ describe('Auth0r Test Suite', function() {
 			}
 		}
 	});
-	it('should create a new user when registering', function() {
+	it('should create a new user when registering', async function() {
 		let auth0r = new Auth0r({
 			issuer: 'test',
 			public_key: '',
 			private_key: '',
+			user_identifier: 'username',
 			connection
 		});
+		// need to create dummy user data
+		let dummy = { username: 'testy', password: 'Password1*' };
+
+		let result;
+		expect(result = await auth0r.tryRegister(dummy.username, dummy.password)).to.not.throw;
+
+		expect(result).to.equal(dummy.username);
+
+		let knex = Knex(connection);
+		let users;
+		expect(users = await knex.table('Users')
+			.select()).to.not.throw;
+
+		expect(users).has.length(1);
+		let user_data = users[0];
+		expect(user_data).has.keys(['id', 'username', 'password', 'o']);
+		expect(user_data.id).is.a('number');
+		expect(user_data.username).to.equal(dummy.username);
+		expect(bcrypt.compareSync(dummy.password, user_data.password)).to.be.true;
+		expect(user_data.o).to.be.null;
+	});
+	it('should return an opaque key and jwt when logging in', async function() {
+		let auth0r = new Auth0r({
+			issuer: 'test',
+			connection
+		});
+		// Database made, lets create user manually
+		let password = "Password1*";
+		let email = 'test@test.com';
+
+		let hash = bcrypt.hashSync(password, 12);
+		let knex = Knex(connection);
+		expect(await knex.table('Users')
+			.insert({ email, password: hash })).to.not.throw;
+
+		// User created, let try logging in
+		let jwtoken;
+		let request = {
+			body: {
+				o: ''
+			}
+		};
+		expect(jwtoken = await auth0r.tryLogin(email, password)).to.not.throw;
+		let { o: opaque } = jwt.decode(jwtoken);
+		let dbOpaque;
+		expect(dbOpaque = await knex.table('Users').select('o').where('email', email)).to.not.throw;
+		dbOpaque = dbOpaque[0].o;
+		expect(dbOpaque).to.equal(opaque);
+
+		expect(typeof opaque === "string").to.be.true;
+		expect(opaque.length).to.equal(32);
+
+
+		expect(await auth0r.verifyToken(email, jwtoken, request)).to.be.true;
+		expect(request.body.o).has.length(32);
+		expect(dbOpaque = await knex.table('Users').select('o').where('email', email)).to.not.throw;
+		dbOpaque = dbOpaque[0].o;
+		expect(dbOpaque).to.equal(request.body.o);
+	});
+	it('should intercept unauthorized traffic', async function() {
+		let auth0r = new Auth0r({
+			issuer: 'test',
+			connection
+		});
+		let request = {
+			headers: {
+				authorization: ''
+			}
+		};
+		let response = {};
+		let next = (request, response) => {
+			expect(request).to.not.be.undefined;
+			expect(response).to.not.be.undefined;
+		};
+		await auth0r.middleware(request, response, next);
+	});
+	after(async function() {
+		deleteTestDatabase();
 	});
 });
 
-function newTestDatabase() {
-	let test_empty = path.resolve(dir, './test_empty.db');
-	let test = path.resolve(dir, './test.db');
-	log(`Deleting ${test.toString()}`);
-	if (fs.existsSync(test)) {
+function deleteTestDatabase() {
+	log(`Deleting ${test_db.toString()}`);
+	if (fs.existsSync(test_db)) {
 		log('database already exists ... deleting');
-		fs.unlinkSync(test);
+		fs.unlinkSync(test_db);
 	}
-	log(`Copying ${test_empty.toString()} > ${test.toString()}`);
-	fs.copyFileSync(test_empty, test);
-	log(fs.existsSync(test) ? 'Database now exists!' : 'Database does not exist');
-	return test;
-}/**
+}
+
+function deleteRSAKeys() {
+	rimraf(key_folder);
+}
+
+function newTestDatabase() {
+	log(`Copying ${test_db_empty.toString()} > ${test_db.toString()}`);
+	fs.copyFileSync(test_db_empty, test_db);
+	log(fs.existsSync(test_db) ? 'Database now exists!' : 'Database does not exist');
+	return test_db;
+}
+
+/**
  * Remove directory recursively
  * @param {string} dir_path
  * @see https://stackoverflow.com/a/42505874/3027390
@@ -258,7 +361,7 @@ function newTestDatabase() {
 function rimraf(dir_path) {
 	if (fs.existsSync(dir_path)) {
 		fs.readdirSync(dir_path).forEach(function(entry) {
-			var entry_path = path.join(dir_path, entry);
+			let entry_path = path.join(dir_path, entry);
 			if (fs.lstatSync(entry_path).isDirectory()) {
 				rimraf(entry_path);
 			} else {
