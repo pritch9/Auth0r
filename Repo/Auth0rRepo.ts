@@ -8,6 +8,10 @@ import deasync from 'deasync';
 let dev = getEnv() === ENV.DEVELOPMENT;
 let knex: Knex = undefined; // protected static variable
 
+let hashSync = deasync(bcrypt.hash);
+let genSaltSync = deasync(bcrypt.genSalt);
+let compareSync = deasync(bcrypt.compare);
+
 let table_schemas = {
 	Users: (user_identifier: string) => (table: TableBuilder) => {
 		table.increments('id');
@@ -27,6 +31,11 @@ let table_schemas = {
 class Auth0rRepoOptions {
 	connection: any;
 	user_identifier: string;
+}
+
+class LoginResponse {
+	public opaque: string;
+	public id: number;
 }
 
 export class Auth0rRepo {
@@ -83,115 +92,119 @@ export class Auth0rRepo {
 		this.errors.BAD_PASSWORD.name = 'BAD_PASSWORD';
 	}
 
-	login(user_id: string, password: string): Promise<string> {
-		return new Promise<string>((resolve, reject) => {
-			let handleError = (prodError: Error, devError?: Error) => this.handleError(reject, user_id, 'login', prodError, devError);
+	async login(user_id: string, password: string): Promise<LoginResponse> {
+		let handleError = (prodError: Error, devError?: Error) => this.handleError(user_id, 'login', prodError, devError);
 
-			knex.select('password')
+		let results;
+		try {
+			results = await knex.select('id', 'password')
 				.from('Users')
-				.where(this.user_identifier, user_id).then((results) => {
-					if (results.length) {
-						let hash = results[0].password;
+				.where(this.user_identifier, user_id);
+		} catch (err) {
+			handleError(this.errors.DATABASE_ERROR, err);
+		}
 
-						bcrypt.compare(password, hash).then((res) =>{
-							if (res) {
-								// passwords match!
-								let token = Auth0r.generateOpaqueKey();
-								knex.table('Users')
-									.update({o: token})
-									.where(this.user_identifier, user_id).then(() => {
-										// Success
-										resolve(token);
-								}).catch(err => handleError(this.errors.DATABASE_ERROR, err));
-							} else {
-								handleError(this.errors.INVALID_CREDS);
-							}
-						});
-					} else {
-						handleError(this.errors.INVALID_CREDS);
-					}
-				}).catch(err => handleError(this.errors.DATABASE_ERROR, err));
-		});
+		if (results.length) {
+			let hash = results[0].password;
+			let id = results[0].id;
+
+			let match = compareSync(password, hash);
+
+			if (match) {
+				// passwords match!
+				let token = Auth0r.generateOpaqueKey();
+				try {
+					await knex.table('Users')
+						.update({o: token})
+						.where('id', id);
+						// Success
+						return { id, opaque: token };
+				} catch(err) { handleError(this.errors.DATABASE_ERROR, err); }
+			} else {
+				handleError(this.errors.INVALID_CREDS);
+			}
+		} else {
+			handleError(this.errors.INVALID_CREDS);
+		}
 		// On Success, return opaque
 		// On Fail, return undefined
 	}
-	verifyOpaque(user_id: string, token: string, request): Promise<boolean> {
-		return new Promise<boolean>((resolve, reject) => {
-			let handleError = (prodError: Error, devError?: Error) => this.handleError(reject, user_id, 'verifyOpaque', prodError, (devError) ? devError : prodError);
+	async verifyOpaque(user_id: number, token: string, request): Promise<boolean> {
+		let handleError = (prodError: Error, devError?: Error) => this.handleError(String(user_id), 'verifyOpaque', prodError, (devError) ? devError : prodError);
 
-			knex.table('Users')
-				.select('o')
-				.where(this.user_identifier, user_id)
-				.then((result) => {
-					if (result.length) {
-						if(result[0].o === token) {
-							// authorized user
-							request.body.o = Auth0r.generateOpaqueKey();
-							knex.table('Users')
-								.update({o: request.body.o}).then(() => {
-									resolve(true);
-								}).catch((err) => handleError(this.errors.SERVER_ERROR, err));
-						} else {
-							let devError = new Error(JSON.stringify(request.headers));
-							devError.name = "UNAUTHORIZED_ACCESS";
-							handleError(this.errors.UNAUTHORIZED_ACCESS, devError);
-							knex.table('Users')
-								.update({o: null})
-								.then(() => { /* do nothing */ })
-								.catch((err) => this.logger.logError(user_id, 'verifyOpaque - set opaque', err, err))
-						}
-					} else {
-						handleError(this.errors.INVALID_OPAQUE);
-					}
-				}).catch(err => handleError(err));
-		});
-	}
-	register(user_id: string, password: string): Promise<string> {
-		return new Promise<string>((resolve, reject) => {
-			let handleError = (prodError: Error, devError?: Error) => this.handleError(reject, user_id, 'register', prodError, devError ? devError : prodError);
+		let results = await knex.table('Users')
+			.select('o')
+			.where('id', user_id);
 
-			if (this.user_identifier === 'email' && !email_validator.validate(user_id)) {
-				handleError(this.errors.INVALID_EMAIL);
-				return;
-			}
-
-			if (!Auth0rRepo.passwordRequirement.test(password)) {
-				handleError(this.errors.BAD_PASSWORD);
-				return;
-			}
-			bcrypt.genSalt(12, (err, salt) => {
-				if (err) {
-					return handleError(this.errors.SERVER_ERROR, err);
+		if (results.length) {
+			if(results[0].o === token) {
+				// authorized user
+				if (!request.body) request.body = {};
+				request.body.o = Auth0r.generateOpaqueKey();
+				try {
+					await knex.table('Users')
+						.update({o: request.body.o})
+						.where('id',user_id);
+					return true;
+				} catch (err) {
+					handleError(this.errors.SERVER_ERROR, err)
 				}
-				bcrypt.hash(password, salt, (err, hash) => {
-					if (err) {
-						handleError(this.errors.SERVER_ERROR, err);
-					}
-					// Now we can store data
-					let userData = {
-						password: hash
-					};
-					userData[this.user_identifier] = user_id;
-					knex.table('Users')
-						.insert(userData)
-						.then(() => {
-							// Success
-							resolve(user_id);
-						}).catch((err) => {
-							if(err.code === 0) {
-								handleError(this.errors.REG_USER_EXISTS, err);
-							} else {
-								handleError(this.errors.SERVER_ERROR, err);
-							}
-						});
-				});
-			});
-		});
+			} else {
+				let devError = new Error(JSON.stringify(request.headers));
+				devError.name = "UNAUTHORIZED_ACCESS";
+				handleError(this.errors.UNAUTHORIZED_ACCESS, devError);
+				try {
+					await knex.table('Users')
+						.update({o: null})
+						.where('id', user_id)
+				} catch(err) {
+					this.logger.logError(String(user_id), 'verifyOpaque - set opaque', err, err);
+				}
+			}
+		} else {
+			handleError(this.errors.INVALID_OPAQUE);
+		}
+	}
+	async register(user_id: string, password: string): Promise<string> {
+		let handleError = (prodError: Error, devError?: Error) => this.handleError(user_id, 'register', prodError, devError ? devError : prodError);
+
+		if (this.user_identifier === 'email' && !email_validator.validate(user_id)) {
+			handleError(this.errors.INVALID_EMAIL);
+			return;
+		}
+
+		if (!Auth0rRepo.passwordRequirement.test(password)) {
+			handleError(this.errors.BAD_PASSWORD);
+			return;
+		}
+		let salt, hash;
+		try {
+			salt = genSaltSync(12);
+			hash = hashSync(password, salt);
+		} catch (err) {
+			handleError(this.errors.SERVER_ERROR, err);
+		}
+		// Now we can store data
+		let userData = {
+			password: hash
+		};
+		userData[this.user_identifier] = user_id;
+		try {
+			await knex.table('Users')
+				.insert(userData);
+			return user_id;
+		} catch (err) {
+			if(err.code === 0) {
+				handleError(this.errors.REG_USER_EXISTS, err);
+			} else {
+				handleError(this.errors.SERVER_ERROR, err);
+			}
+		}
 	}
 
-	private handleError(reject, user_id: string, func: string, prodError: Error, devError?: Error) {
-		reject((dev) ? devError : prodError);
+	private handleError(user_id: string, func: string, prodError: Error, devError?: Error) {
 		setTimeout(() => this.logger.logError(user_id, func, prodError, devError ? devError : prodError));
+		throw (dev) ? devError : prodError;
 	}
 
 	private static async initDatabase(repo: Auth0rRepo, cb: (err, result) => void) {

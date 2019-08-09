@@ -7,6 +7,8 @@ import jsjws from 'jsjws';
 import crypto from 'crypto';
 import deasync from 'deasync';
 
+let verifySync = deasync(jwt.verify);
+
 const env = getEnv();
 if (env === ENV.DEVELOPMENT) {
     warn('DEBUG mode enabled');
@@ -20,11 +22,7 @@ export class Auth0rOptions {
     user_identifier?: string
 }
 
-/**
- * TODO:
- *  -   Sign new tokens when a user signs in
- *  -   Verify token when user makes a request
- */
+const authorizationRegex = new RegExp(/^Bearer: (.*):([0-9]*)$/);
 
 export class Auth0r {
     private readonly public_key_file: string;
@@ -34,6 +32,7 @@ export class Auth0r {
     private readonly issuer: string;
     private repo: Auth0rRepo;
     private readonly generateKeyPairSync;
+    public get dbReady() { return this.repo.ready };
 
     constructor(options: Auth0rOptions) {
         this.generateKeyPairSync = deasync(this.generateKeyPair);
@@ -57,14 +56,24 @@ export class Auth0r {
         });
     }
 
-    public middleware(req, res, next) {
+    public async middleware(req, res, next) {
         if (env === ENV.DEVELOPMENT) log('Auth0r reading request');
-        if (req.headers.authorization) { // TODO: IDK WTF THIS IS -\_(.>.)_/-
-            let token_user = req.headers.authorization.split('Bearer: ')[1].split(':');
-            let token = token_user[0];
-            let user_id = token_user[1];
-            this.verifyToken(user_id, token, req).then((result) => {
-                if (result) {
+        if (req.headers && req.headers.authorization != undefined) {
+            let groups = authorizationRegex.exec(req.headers.authorization);
+            if (groups && groups.length == 3) {
+                let token = groups[1];
+                let user_id = +groups[2];
+                if (isNaN(user_id)) {
+                    res.sendStatus(401);
+                    return;
+                }
+                let verified;
+                try {
+                    verified = await this.verifyToken(user_id, token, req)
+                } catch (err) {
+                    throw(err);
+                }
+                if (verified) {
                     // verified
                     delete req.user;
                     req.user = user_id;
@@ -73,15 +82,20 @@ export class Auth0r {
                     // unverified
                     res.sendStatus(403);
                 }
-            });
+            } else {
+                res.sendStatus(401);
+            }
+        } else {
+            delete req.user;
+            next();
         }
     }
 
-    private signToken(user_id: string, o: string) {
+    private signToken(user_id: number, o: string) {
         let signingOptions = {
             issuer: this.issuer,
             subject:  'user',
-            audience:  user_id,
+            audience:  String(user_id),
             expiresIn:  "12h",
             algorithm:  "RS256"
         };
@@ -90,47 +104,43 @@ export class Auth0r {
         };
         return jwt.sign(payload, this.private_key, signingOptions);
     }
-    public verifyToken(user_id: string, token: string, request): Promise<boolean> {
+    public async verifyToken(user_id: number, token: string, request): Promise<boolean> {
         let verifyOptions = {
             issuer: this.issuer,
             subject:  'user',
-            audience:  user_id,
+            audience:  String(user_id),
             expiresIn:  "12h",
             algorithm:  "RS256"
         };
-        return new Promise<boolean>((resolve, reject) => {
-            jwt.verify(token, this.public_key, verifyOptions, (err, decoded) => {
-                if (err) {
-                    if (env === ENV.DEVELOPMENT) {
-                        error("Unable to verify user: No opaque token given!");
-                    }
-                    resolve(false);
-                } else {
-                    if (decoded.o) {
-                        this.repo.verifyOpaque(user_id, decoded.o, request).then((result) => {
-                           resolve(result);
-                        }).catch((err) => reject(err));
-                    } else {
-                        resolve(false);
-                    }
-                }
-            });
-        });
-
+        let decoded;
+        try {
+            decoded = verifySync(token, this.public_key, verifyOptions);
+        } catch (err) {
+            if (env === ENV.DEVELOPMENT) {
+                error("Unable to verify user: No opaque token given!");
+            }
+            return false;
+        }
+        if (decoded.o) {
+            try {
+                return await this.repo.verifyOpaque(user_id, decoded.o, request);
+            } catch(err) {
+                throw err;
+            }
+        } else {
+            return false;
+        }
     }
 
-    public get dbReady() { return this.repo.ready };
-
     public async tryLogin(user_id: string, password: string) {
-        let opaque;
+        let attempt;
         try {
-            opaque = await this.repo.login(user_id, password);
+            attempt = await this.repo.login(user_id, password);
         } catch (err) {
             throw err;
         }
-        return this.signToken(user_id, opaque);
+        return this.signToken(attempt.id, attempt.opaque);
     }
-
     public async tryRegister(user_id, password) {
         return this.repo.register(user_id, password);
     }
@@ -138,7 +148,6 @@ export class Auth0r {
     public static generateOpaqueKey(): string {
         return crypto.randomBytes(24).toString('base64');
     }
-
     private async generateKeyPair(cb: (err, result) => void) {
         let pub: string, priv: string;
         let pubKeyFile = this.public_key || path.resolve(__dirname, '../rsa_keys/pubkey.pem');
@@ -177,11 +186,9 @@ export class Auth0r {
     static compareKeyTwins(auth0rInstance: Auth0r, auth0rInstance2: Auth0r) {
         return Auth0r.compareKeys(auth0rInstance, auth0rInstance2.public_key, auth0rInstance2.private_key);
     }
-
     static compareKeys(auth0rInstance: Auth0r, public_key: string, private_key: string) {
         return auth0rInstance.public_key == public_key && auth0rInstance.private_key == private_key;
     }
-
 }
 
 function checkRSAKeys(public_key: string, private_key: string) {
