@@ -5,7 +5,7 @@ import fs from 'fs';
 import path from 'path';
 import {log, error} from "../src/Utilities/Utilities";
 import Knex from 'knex';
-import bcrypt from 'bcrypt';
+import bcrypt, {hashSync} from 'bcrypt';
 import crypto from 'crypto';
 import * as jwt from 'jsonwebtoken';
 
@@ -297,37 +297,85 @@ describe('Auth0r StartUp Suite', function() {
 		};
 		expect(jwtoken = await auth0r.tryLogin(email, password)).to.not.throw;
 		let { o: opaque } = jwt.decode(jwtoken);
-		let dbOpaque;
-		expect(dbOpaque = await knex.table('Users').select('o').where('email', email)).to.not.throw;
-		dbOpaque = dbOpaque[0].o;
+		let user_data;
+		expect(user_data = await knex.table('Users').select('id', 'o').where('email', email)).to.not.throw;
+		let id_num = user_data[0].id;
+		let dbOpaque = user_data[0].o;
+
 		expect(dbOpaque).to.equal(opaque);
 
 		expect(typeof opaque === "string").to.be.true;
 		expect(opaque.length).to.equal(32);
 
 
-		expect(await auth0r.verifyToken(email, jwtoken, request)).to.be.true;
+		expect(await auth0r.verifyToken(id_num, jwtoken, request)).to.be.true;
 		expect(request.body.o).has.length(32);
 		expect(dbOpaque = await knex.table('Users').select('o').where('email', email)).to.not.throw;
 		dbOpaque = dbOpaque[0].o;
 		expect(dbOpaque).to.equal(request.body.o);
 	});
-	it('should intercept unauthorized traffic', async function() {
+	it('should intercept unauthorized traffic and result in 403', async function() {
+		let test = async (jwt) => {
+			let auth0r = new Auth0r({
+				issuer: 'test',
+				connection
+			});
+			let request = {
+				headers: {
+					authorization: jwt
+				},
+                user: undefined
+			};
+			let response = new MiddlewareResponse();
+			let next = new MiddlewareNext();
+
+			expect(await auth0r.middleware(request, response, () => next.run(request, response))).to.not.throw;
+			return {request, response, next};
+		};
+
+		let { request: req_null,  response: res_null, next: next_null } = await test(null);
+		let { response: res_blank, next: next_blank } = await test('');
+		let { response: res_invalid, next: next_invalid } = await test('INVALID');
+
+		expect(next_null.ran).to.be.true;
+		expect(next_blank.ran).to.be.false;
+		expect(next_invalid.ran).to.be.false;
+		expect(res_null.response).to.be.undefined;
+		expect(req_null.user).to.be.undefined;
+		expect(res_blank.response).to.equal(401);
+		expect(res_invalid.response).to.equal(401);
+	});
+	it('should allow authorized traffic and return with new opaque key', async function() {
 		let auth0r = new Auth0r({
 			issuer: 'test',
+			user_identifier: 'username',
 			connection
 		});
+
+		let knex = Knex(connection);
+		expect(await knex.table('Users')
+			.insert({
+				username: 'test',
+				password: hashSync('Password1*', 12)
+			})).to.not.throw;
+		let user_id;
+		expect(user_id = (await knex.table('Users').select('id').where('username', 'test'))[0].id).to.not.throw;
+		let valid_jwt;
+		expect(valid_jwt = await auth0r.tryLogin('test', 'Password1*')).to.not.throw;
 		let request = {
 			headers: {
-				authorization: ''
-			}
+				authorization: `Bearer: ${valid_jwt}:${user_id}`
+			},
+			user: undefined
 		};
-		let response = {};
-		let next = (request, response) => {
-			expect(request).to.not.be.undefined;
-			expect(response).to.not.be.undefined;
-		};
-		await auth0r.middleware(request, response, next);
+		let response = new MiddlewareResponse();
+		let next = new MiddlewareNext();
+
+		expect(await auth0r.middleware(request, response, () => next.run(request, response))).to.not.throw;
+
+		expect(next.ran).to.be.true;
+		expect(request.user).to.not.be.undefined;
+		expect(request.user).to.equal(user_id);
 	});
 	after(async function() {
 		deleteTestDatabase();
@@ -351,6 +399,28 @@ function newTestDatabase() {
 	fs.copyFileSync(test_db_empty, test_db);
 	log(fs.existsSync(test_db) ? 'Database now exists!' : 'Database does not exist');
 	return test_db;
+}
+
+class MiddlewareResponse {
+	public response: any;
+	public sendStatus = this.send;
+	send(response) {
+		this.response = response;
+	}
+}
+
+class MiddlewareNext {
+	public ran: boolean;
+
+	constructor() {
+		this.ran = false;
+	}
+
+	run(req, res) {
+		this.ran = true;
+		expect(req).to.not.be.undefined;
+		expect(res).to.not.be.undefined;
+	}
 }
 
 /**
