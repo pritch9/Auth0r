@@ -5,7 +5,25 @@
     ],
     "jsRules": {},
     "rules": {
-        "no-console": false
+        "no-console": false,
+        "indent": [
+            true,
+            "tabs"
+        ],
+        "variable-name": {
+            "options": [
+                "allow-snake-case"
+            ]
+        },
+        "quotemark": [
+            true,
+            "single"
+        ],
+        "only-arrow-functions": false,
+        "no-unused-expression": false,
+        "triple-equals": false,
+        "interface-name": false,
+        "max-classes-per-file": false
     },
     "rulesDirectory": []
 }

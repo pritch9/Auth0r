@@ -1,11 +1,14 @@
 {
-  "name": "auth0r",
+  "name": "@pritch9/auth0r",
   "version": "0.0.1",
   "description": "Auth0r is a plug-in play package that will handle user authorizations and requests.",
-  "main": "./dist/index.js",
+  "main": "./lib/index.js",
+  "types": "./lib/index.d.ts",
   "scripts": {
     "start": "tsc && node -r esm ./dist/index.js",
-    "test": "mocha -r ts-node/register tests/**/*.spec.ts"
+    "test": "mocha -r ts-node/register tests/**/*.spec.ts",
+    "build": "tsc",
+    "lint": "tslint -p tsconfig.json"
   },
   "keywords": [
     "authorization",
@@ -39,5 +42,16 @@
     "npm": "^6.10.3",
     "tslint": "^5.18.0",
     "typescript": "^3.5.3"
-  }
+  },
+  "directories": {
+    "test": "tests"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/pritch9/Auth0r.git"
+  },
+  "bugs": {
+    "url": "https://github.com/pritch9/Auth0r/issues"
+  },
+  "homepage": "https://github.com/pritch9/Auth0r#readme"
 }
