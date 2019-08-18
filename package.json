@@ -1,6 +1,6 @@
 {
   "name": "@pritch9/auth0r",
-  "version": "0.1.4",
+  "version": "0.1.5",
   "description": "Auth0r is a plug-in play package that will handle user authorizations and requests.",
   "main": "./lib/index.js",
   "types": "./lib/index.d.ts",
