@@ -129,18 +129,24 @@ export class Auth0r {
 		}
 	}
 
-	public async tryLogin(user_id: string, password: string) {
+	public async login(request, response) {
+		const user_id = request.body.user_id;
+		const password = request.body.password;
 		let attempt;
 		try {
 			attempt = await this.repo.login(user_id, password);
 		} catch (err) {
 			throw err;
 		}
-		return this.signToken(attempt.id, attempt.opaque);
+		response.send({
+			token: this.signToken(attempt.id, attempt.opaque),
+		});
 	}
 
-	public async tryRegister(user_id, password) {
-		return this.repo.register(user_id, password);
+	public async register(request, response) {
+		const user_id = request.body.user_id;
+		const password = request.body.password;
+		response.send(await this.repo.register(user_id, password));
 	}
 
 	private signToken(user_id: number, o: string) {
