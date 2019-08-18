@@ -1,13 +1,13 @@
 {
   "name": "@pritch9/auth0r",
-  "version": "0.0.5",
+  "version": "0.1.0",
   "description": "Auth0r is a plug-in play package that will handle user authorizations and requests.",
   "main": "./lib/index.js",
   "types": "./lib/index.d.ts",
   "scripts": {
     "start": "tsc && node -r esm ./dist/index.js",
     "test": "mocha -r ts-node/register tests/**/*.spec.ts",
-    "build": "tsc",
+    "build": "tsc -d",
     "lint": "tslint -p tsconfig.json"
   },
   "keywords": [
@@ -29,7 +29,6 @@
     "ts-node": "^8.3.0"
   },
   "dependencies": {
-    "@types/webrtc": "0.0.25",
     "bcrypt": "^3.0.6",
     "data.task": "^3.1.2",
     "deasync": "^0.1.15",
