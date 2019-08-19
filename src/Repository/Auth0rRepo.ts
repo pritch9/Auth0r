@@ -36,6 +36,9 @@ const table_schemas = {
 		table.binary('password', 60);
 		table.string('o', 32);
 	},
+	Auth0r_Admins: () => (table: TableBuilder) => {
+		table.integer('user_id').unique('UK_Admins_user_id');
+	},
 };
 
 export class Auth0rRepo {
@@ -143,7 +146,7 @@ export class Auth0rRepo {
 						.update({o: token})
 						.where('id', id);
 					// Success
-					return {id, opaque: token};
+					return {id, o: token};
 				} catch (err) {
 					handleError(this.errors.DATABASE_ERROR, err);
 				}

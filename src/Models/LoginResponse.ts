@@ -1,4 +1,4 @@
 export class LoginResponse {
-	public opaque: string;
+	public o: string;
 	public id: number;
 }

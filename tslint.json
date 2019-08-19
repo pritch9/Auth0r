@@ -23,7 +23,8 @@
         "no-unused-expression": false,
         "triple-equals": false,
         "interface-name": false,
-        "max-classes-per-file": false
+        "max-classes-per-file": false,
+        "object-literal-sort-keys": false
     },
     "rulesDirectory": []
 }

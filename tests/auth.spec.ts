@@ -1,11 +1,11 @@
 import {fail} from 'assert';
-import bcrypt, {hashSync} from 'bcrypt';
+import * as bcrypt from 'bcrypt';
 import {expect} from 'chai';
-import crypto from 'crypto';
-import fs from 'fs';
+import * as crypto from 'crypto';
+import * as fs from 'fs';
 import * as jwt from 'jsonwebtoken';
-import Knex from 'knex';
-import path from 'path';
+import Knex = require('knex');
+import * as path from 'path';
 import {Auth0r} from '../src';
 import {error, log} from '../src/Utilities/Utilities';
 import {MiddlewareNext} from './Models/MiddlewareNext';
@@ -248,6 +248,16 @@ describe('Auth0r StartUp Suite', function() {
 					},
 				],
 			},
+			Auth0r_Admins: {
+				columns: [
+					{
+						name: 'user_id',
+						primary_key: false,
+						test_value: 1,
+						type: 'number',
+					},
+				],
+			},
 		};
 
 		for (const tableName of Object.keys(schema)) {
@@ -404,7 +414,7 @@ describe('Auth0r StartUp Suite', function() {
 		const knex = Knex(connection);
 		expect(await knex.table('Users')
 			.insert({
-				password: hashSync('Password1*', 12),
+				password: bcrypt.hashSync('Password1*', 12),
 				username: 'test',
 			})).to.not.throw;
 		let user_id;

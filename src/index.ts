@@ -39,10 +39,13 @@ export class Auth0r {
 	private readonly public_key_file: string;
 	private readonly private_key_file: string;
 	private readonly issuer: string;
+	private readonly admin_panel: boolean;
 	private repo: Auth0rRepo;
 	private readonly generateKeyPairSync;
+	private readonly app: any;
 
 	constructor(options: Auth0rOptions) {
+		this.app = options.app;
 		this.generateKeyPairSync = deasync(this.generateKeyPair);
 		if (!checkRSAKeys(options.public_key, options.private_key)) {
 			// key file
@@ -62,6 +65,13 @@ export class Auth0r {
 			connection: options.connection,
 			user_identifier: options.user_identifier || 'email',
 		});
+
+		if (!!options.admin_panel) {
+			this.app.get('admin', (request, response) => {
+				const reqPath = request.path;
+
+			});
+		}
 	}
 
 	public async middleware(req, res, next) {
@@ -129,24 +139,37 @@ export class Auth0r {
 		}
 	}
 
-	public async login(request, response) {
+	public async tryLogin(user_id: string, password: string) {
+		const { id, o } = await this.repo.login(user_id, password);
+		return this.signToken(id, o);
+	}
+
+	public async login(request, response, next) {
+		const user_id = request.body.user_id;
+		const password = request.body.password;
+		let token;
+		try {
+			token = await this.tryLogin(user_id, password);
+		} catch (err) {
+			return next(err);
+		}
+		response.send(token);
+	}
+
+	public async tryRegister(user_id, password) {
+		return this.repo.register(user_id, password);
+	}
+
+	public async register(request, response, next) {
 		const user_id = request.body.user_id;
 		const password = request.body.password;
 		let attempt;
 		try {
-			attempt = await this.repo.login(user_id, password);
+			attempt = await this.tryRegister(user_id, password);
 		} catch (err) {
-			throw err;
+			return next(err);
 		}
-		response.send({
-			token: this.signToken(attempt.id, attempt.opaque),
-		});
-	}
-
-	public async register(request, response) {
-		const user_id = request.body.user_id;
-		const password = request.body.password;
-		response.send(await this.repo.register(user_id, password));
+		response.send(attempt);
 	}
 
 	private signToken(user_id: number, o: string) {
