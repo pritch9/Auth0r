@@ -65,6 +65,7 @@ export class Auth0r {
 			connection: options.connection,
 			user_identifier: options.user_identifier || 'email',
 		});
+		this.app.use(this.middleware);
 
 		if (!!options.admin_panel) {
 			this.app.get('admin', (request, response) => {
