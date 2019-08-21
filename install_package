@@ -1,0 +1,8 @@
+#!/usr/bin/env bash
+
+COPY_DIR=$1
+PACKAGE_FILES=( package.json package-lock.json lib )
+
+for i in "${PACKAGE_FILES[@]}"; do
+  cp -v "$i" "$COPY_DIR/$i" || cp -Rv "$i" "$COPY_DIR"
+done;
