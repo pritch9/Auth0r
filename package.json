@@ -1,6 +1,6 @@
 {
   "name": "auth0r",
-  "version": "0.0.1",
+  "version": "0.0.10",
   "description": "Auth0r is a plug-n-play authentication manager",
   "main": "./lib/index.js",
   "types": "./lib/**/*.d.ts",
