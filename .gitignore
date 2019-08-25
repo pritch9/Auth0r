@@ -1,2 +1,8 @@
+# Folders
 node_modules/
 .idea/
+rsa_keys/
+lib/
+
+# Files
+tests/database/test.db

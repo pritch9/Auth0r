@@ -1,6 +1,9 @@
 # Directories
 src/
 node_modules/
+tests/
+rsa_keys/
+.idea/
 
 # Files
 install_package
