@@ -1,6 +1,7 @@
 import { Application } from 'express';
 import APIManager from './API/APIManager';
 import DBInitializer from './API/Database/DBInitializer';
+import Auth0rMiddleware from './Middleware/Auth0rMiddleware';
 import Auth0rConfig, {Auth0rConfiguration} from './Models/Auth0rConfig';
 export default class Auth0r {
 
@@ -22,6 +23,7 @@ export default class Auth0r {
 	public static async initialize(app: Application, options?: any) {
 		options = Auth0rConfig(options);
 		this.storeOptions(options);
+		app.use(Auth0rMiddleware); // non-blocking
 		await DBInitializer.initializeDatabase(options.database);
 		APIManager.initializeAPI(app, options);
 	}

@@ -33,8 +33,8 @@ export default class KeyBank {
 		}
 	}
 
-	async verify(encrypted: string, identifier: string) {
-		return jwt.verify(encrypted, this.keys.private_key, this.getOptions(identifier) as VerifyOptions);
+	async verify(encrypted: string): Promise<any> {
+		return jwt.verify(encrypted, this.keys.public_key, this.getOptions() as VerifyOptions);
 	}
 
 	async sign(payload: any, identifier: string) {
