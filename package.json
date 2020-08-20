@@ -29,7 +29,7 @@
     "ts-node": "^8.3.0"
   },
   "dependencies": {
-    "bcrypt": "^3.0.6",
+    "bcrypt": "^5.0.0",
     "data.task": "^3.1.2",
     "deasync": "^0.1.15",
     "email-validator": "^2.0.4",
