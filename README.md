@@ -9,7 +9,7 @@ To initialize Auth0r, just create a new instance
 
 `let Auth0r = new Auth0r(connection: any)`
 
-To make things go quicker, you have to pass Knex connection options.  It just plugs them into the query builder.  I will make it easier in the future somehow.
+To make things go quicker, you have to pass Knex connection options.  It just plugs them into the query builder.  ~~I will make it easier in the future somehow.~~
 
 ### Middleware
 Middleware is accessible by
