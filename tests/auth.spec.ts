@@ -373,81 +373,79 @@ describe('Auth0r StartUp Suite', function() {
 	});
 
 	it('should intercept traffic for null token', async function() {
-		const {request: req_null, response: res_null, next: next_null} = await basicTokenTest(connection, null);
+		const {response: res_null, next: next_null} = await basicTokenTest(undefined, connection, null, '1234');
 		expect(next_null.ran).to.be.false;
-		expect(req_null.user).to.be.undefined;
 		expect(res_null.response).to.be.equal(401);
 	});
 
 	it('should intercept traffic for blank token', async function() {
-		const {request: req_null, response: res_null, next: next_null} = await basicTokenTest(connection, '');
+		const {response: res_null, next: next_null} = await basicTokenTest(undefined, connection, '', '1');
 		expect(next_null.ran).to.be.false;
-		expect(req_null.user).to.be.undefined;
 		expect(res_null.response).to.be.equal(401);
 	});
 
 	it('should intercept traffic for invalid token', async function() {
-		const {request: req_null, response: res_null, next: next_null} = await basicTokenTest(connection, 'INVALID');
+		const {response: res_null, next: next_null} = await basicTokenTest(undefined, connection, 'INVALID', '145');
 		expect(next_null.ran).to.be.false;
-		expect(req_null.user).to.be.undefined;
 		expect(res_null.response).to.be.equal(401);
 	});
 
 	it('should allow authorized traffic and return with new opaque key', async function() {
 		this.timeout(5000);
+		const identifier = 'username';
+		const test_identifier = 'test';
+		const test_password = 'Password1*';
+
 		const auth0r = new Auth0r({
 			connection,
 			issuer: 'test',
-			user_identifier: 'username',
+			user_identifier: identifier,
 		});
 
 		const knex = Knex(connection);
 		expect(await knex.table('Users')
 			.insert({
-				password: bcrypt.hashSync('Password1*', 12),
-				username: 'test',
+				password: await bcrypt.hash(test_password, 12),
+				username: test_identifier,
 			})).to.not.throw;
+
 		let user_id;
-		expect(user_id = (await knex.table('Users').select('id').where('username', 'test'))[0].id).to.not.throw;
+		expect(user_id = (await knex.table('Users').select('id').where(identifier, test_identifier))[0].id).to.not.throw;
 		let valid_jwt;
-		expect(valid_jwt = await auth0r.tryLogin('test', 'Password1*')).to.not.throw;
-		const request = {
-			headers: {
-				authorization: `Bearer: ${valid_jwt}:${user_id}`,
-			},
-			user: undefined,
-		};
-		const response = new MiddlewareResponse();
-		const next = new MiddlewareNext();
+		expect(valid_jwt = await auth0r.tryLogin(test_identifier, test_password)).to.not.throw;
 
-		expect(await auth0r.middleware(request, response, () => next.run(request, response))).to.not.throw;
-
+		const {response, next} = await basicTokenTest(auth0r, connection, valid_jwt, user_id);
 		expect(next.ran).to.be.true;
-		expect(request.user).to.not.be.undefined;
-		expect(request.user).to.equal(user_id);
+		expect(response.response).to.be.equal(200);
 	});
 	after(function() {
 		deleteTestDatabase();
 	});
 });
 
-async function basicTokenTest(connection: any, token: string | null | undefined) {
-	const auth0r = new Auth0r({
+async function basicTokenTest(
+	auth0r: Auth0r|undefined,
+	connection: any,
+	token: string | null | undefined,
+	user_id: string,
+) {
+	const server = auth0r !== undefined ? auth0r : new Auth0r({
 		connection,
 		issuer: 'test',
 	});
 	const request = {
 		headers: {
-			authorization: token,
+			authorization: `Bearer: ${token}:${user_id}`,
 		},
-		user: undefined,
 	};
 	const response = new MiddlewareResponse();
 	const next = new MiddlewareNext();
 
-	log(`Before middleware: ${token}`);
-	expect(await auth0r.middleware(request, response, () => next.run(request, response))).to.not.throw;
-	log(`After middleware: ${token}`);
+	expect(await server.middleware(request, response, () => {
+		console.log('Running next!');
+		next.run(request, response);
+	})).to.not.throw;
+
 	return {request, response, next};
 }
 

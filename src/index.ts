@@ -79,13 +79,12 @@ export class Auth0r {
 			log(`Auth0r reading request: ${JSON.stringify(req)}`);
 		}
 		if (req.headers && 'authorization' in req.headers) {
-			console.log(`Parsing ${req.headers.authorization}`);
 			const groups = authorizationRegex.exec(req.headers.authorization);
-			console.log(`Parsed ${req.headers.authorization}`);
 			if (groups && groups.length === 3) {
 				const token = groups[1];
 				const user_id = +groups[2];
 				if (isNaN(user_id)) {
+					log(`${user_id} is not a valid id!`);
 					res.sendStatus(401);
 					return;
 				}
@@ -101,10 +100,12 @@ export class Auth0r {
 					req.user = user_id;
 					next();
 				} else {
+					log(`Unverified request: ${JSON.stringify(req, undefined, 4)}`);
 					// unverified
-					res.sendStatus(403);
+					res.sendStatus(401);
 				}
 			} else {
+				log(`Invalid authorization header: ${req.headers.authorization}`);
 				res.sendStatus(401);
 			}
 		} else {

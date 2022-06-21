@@ -9,6 +9,7 @@ export class MiddlewareNext {
 
 	public run(req, res) {
 		this.ran = true;
+		res.sendStatus(200);
 		expect(req).to.not.be.undefined;
 		expect(res).to.not.be.undefined;
 	}
