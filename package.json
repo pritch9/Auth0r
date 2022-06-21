@@ -18,30 +18,30 @@
   "author": "pritch9",
   "license": "MIT",
   "devDependencies": {
-    "@types/bcrypt": "^3.0.0",
-    "@types/chai": "^4.1.7",
-    "@types/mocha": "^5.2.7",
-    "@types/node": "^12.6.9",
-    "chai": "^4.2.0",
-    "mocha": "^6.2.0",
-    "nyc": "^14.1.1",
-    "sqlite3": "^4.0.9",
-    "ts-node": "^8.3.0"
+    "@types/bcrypt": "^5.0.0",
+    "@types/chai": "^4.3.1",
+    "@types/mocha": "^9.1.1",
+    "@types/node": "^18.0.0",
+    "chai": "^4.3.6",
+    "mocha": "^10.0.0",
+    "nyc": "^15.1.0",
+    "sqlite3": "^5.0.8",
+    "ts-node": "^10.8.1"
   },
   "dependencies": {
-    "bcrypt": "^3.0.6",
+    "bcrypt": "^5.0.1",
     "data.task": "^3.1.2",
-    "deasync": "^0.1.15",
+    "deasync": "^0.1.26",
     "email-validator": "^2.0.4",
     "esm": "^3.2.25",
-    "fibers": "^4.0.1",
+    "fibers": "^5.0.1",
     "jsjws": "^6.0.0",
     "jsonwebtoken": "^8.5.1",
-    "knex": "^0.19.1",
-    "nodemailer": "^6.3.0",
-    "npm": "^6.10.3",
-    "tslint": "^5.18.0",
-    "typescript": "^3.5.3"
+    "knex": "^2.1.0",
+    "nodemailer": "^6.7.5",
+    "npm": "^8.12.2",
+    "tslint": "^5.20.1",
+    "typescript": "^4.7.4"
   },
   "directories": {
     "test": "tests"

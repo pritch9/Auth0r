@@ -76,10 +76,12 @@ export class Auth0r {
 
 	public async middleware(req, res, next) {
 		if (env === ENV.DEVELOPMENT) {
-			log('Auth0r reading request');
+			log(`Auth0r reading request: ${JSON.stringify(req)}`);
 		}
-		if (req.headers && req.headers.authorization != undefined) {
+		if (req.headers && 'authorization' in req.headers) {
+			console.log(`Parsing ${req.headers.authorization}`);
 			const groups = authorizationRegex.exec(req.headers.authorization);
+			console.log(`Parsed ${req.headers.authorization}`);
 			if (groups && groups.length === 3) {
 				const token = groups[1];
 				const user_id = +groups[2];

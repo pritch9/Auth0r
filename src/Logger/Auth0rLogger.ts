@@ -1,9 +1,9 @@
-import Knex from "knex";
+import Knex from 'knex';
 import {Auth0rLoggerOptions} from '../Models/Auth0rLoggerOptions';
 import {ENV, error, getEnv} from '../Utilities/Utilities';
+import {Auth0rRepo} from "../Repository/Auth0rRepo";
 
 const dev = getEnv() === ENV.DEVELOPMENT;
-let knex: Knex; // protected static variable
 
 export class Auth0rLogger {
 	private user_identifier: string;
@@ -22,7 +22,7 @@ export class Auth0rLogger {
                             \tMessage:\t${devError.message}\n
                             ===============================`);
 		} else {
-			knex.table('Auth0r_Log')
+			Auth0rRepo.knex.table('Auth0r_Log')
 				.insert({
 					identifier,
 					func,

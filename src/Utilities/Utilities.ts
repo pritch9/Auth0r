@@ -3,21 +3,24 @@ export enum ENV {
     STAGING,
     PRODUCTION
 }
+
 const envMap = {
     'development': ENV.DEVELOPMENT,
     'staging': ENV.STAGING,
     'production': ENV.PRODUCTION
 };
+
 export function getEnv(): ENV {
     return envMap[process.env.NODE_ENV];
 }
-let env = getEnv();
-let async = {
-    log: (message?: string, ...optionalParams: any[]): number => setTimeout(() => console.log(message || '', ...optionalParams)),
-    warn: (message?: string, ...optionalParams: any[]): number => setTimeout(() => console.warn(message || '', ...optionalParams)),
-    error: (message?: string, ...optionalParams: any[]): number => setTimeout(() => console.error(message || '', ...optionalParams))
+
+const env = getEnv();
+const async = {
+    log: (message?: string, ...optionalParams: any[]): NodeJS.Timeout => setTimeout(() => console.log(message || '', ...optionalParams)),
+    warn: (message?: string, ...optionalParams: any[]): NodeJS.Timeout => setTimeout(() => console.warn(message || '', ...optionalParams)),
+    error: (message?: string, ...optionalParams: any[]): NodeJS.Timeout => setTimeout(() => console.error(message || '', ...optionalParams)),
 };
-let sync = {
+const sync = {
     log: console.log,
     warn: console.warn,
     error: console.error

@@ -1,22 +1,21 @@
 import bcrypt from 'bcrypt';
 import deasync from 'deasync';
 import email_validator from 'email-validator';
-import Knex, {TableBuilder} from 'knex';
-import {Auth0rRepoOptions} from '../Models/Auth0rRepoOptions';
-import {LoginResponse} from '../Models/LoginResponse';
+import Knex from 'knex';
 import {Auth0r} from '../index';
 import {Auth0rLogger} from '../Logger/Auth0rLogger';
+import {Auth0rRepoOptions} from '../Models/Auth0rRepoOptions';
+import {LoginResponse} from '../Models/LoginResponse';
 import {ENV, error, getEnv, log, warn} from '../Utilities/Utilities';
 
 const dev = getEnv() === ENV.DEVELOPMENT;
-let knex: Knex; // protected static variable
 
 const hashSync = deasync(bcrypt.hash);
 const genSaltSync = deasync(bcrypt.genSalt);
 const compareSync = deasync(bcrypt.compare);
 
 const table_schemas = {
-	Auth0r_Log: () => (table: TableBuilder) => {
+	Auth0r_Log: () => (table) => {
 		table.increments('id');
 		table.string('identifier');
 		table.string('prod_error');
@@ -24,19 +23,19 @@ const table_schemas = {
 		table.string('message');
 		table.dateTime('date');
 	},
-	Auth0r_Log_Flags: () => (table: TableBuilder) => {
+	Auth0r_Log_Flags: () => (table) => {
 		table.string('identifier');
 		table.string('identifier_value');
 		table.string('flag');
 		table.string('flag_value');
 	},
-	Users: (user_identifier: string) => (table: TableBuilder) => {
+	Users: (user_identifier: string) => (table) => {
 		table.increments('id');
 		table.string(user_identifier);
 		table.binary('password', 60);
 		table.string('o', 32);
 	},
-	Auth0r_Admins: () => (table: TableBuilder) => {
+	Auth0r_Admins: () => (table) => {
 		table.integer('user_id').unique('UK_Admins_user_id');
 	},
 };
@@ -47,12 +46,13 @@ export class Auth0rRepo {
 		return this._ready;
 	}
 
+	public static knex;
 	private static passwordRequirement = new RegExp(/(?=.*[a-z].*)(?=.*[A-Z].*)(?=.*[0-9].*)(?=.*[!@#$%^&*-+?].*).{8,}/);
 
 	private static async initDatabase(repo: Auth0rRepo, cb: (err, result) => void) {
 		warn('Initializing database...');
 		try {
-			await knex.raw('SELECT 1+1 AS result');
+			await Auth0rRepo.knex.raw('SELECT 1+1 AS result');
 		} catch (err) {
 			repo.logger.logError('DATABASE_CONNECTION', 'initDatabase', err, err);
 			cb(new Error('Unable to connect to database!  Please double check your connection settings.'), null);
@@ -60,7 +60,7 @@ export class Auth0rRepo {
 		for (const table of Object.keys(table_schemas)) {
 			let exists = false;
 			try {
-				exists = await knex.schema.hasTable(table);
+				exists = await Auth0rRepo.knex.schema.hasTable(table);
 			} catch (err) {
 				repo.logger.logError(table, 'initDatabase', err, err);
 				cb(new Error(`Unable to check table \`${table}\`!  Check console to see error message.`), null);
@@ -68,7 +68,7 @@ export class Auth0rRepo {
 			if (!exists) {
 				// Table does not exist
 				try {
-					await knex.schema.createTable(table, table_schemas[table](repo.user_identifier));
+					await Auth0rRepo.knex.schema.createTable(table, table_schemas[table](repo.user_identifier));
 				} catch (err) {
 					repo.logger.logError(table, 'initDatabase', err, err);
 					cb(new Error(`Unable to create table \`${table}\`!  Check console to see error message.`), null);
@@ -102,10 +102,10 @@ export class Auth0rRepo {
 	};
 
 	constructor(options: Auth0rRepoOptions) {
-		knex = Knex(options.connection);
+		Auth0rRepo.knex = Knex(options.connection);
 		this.user_identifier = options.user_identifier;
 		this.logger = new Auth0rLogger({
-			knex,
+			knex: Auth0rRepo.knex,
 			user_identifier: this.user_identifier,
 		});
 		this.initErrors();
@@ -125,7 +125,7 @@ export class Auth0rRepo {
 
 		let results;
 		try {
-			results = await knex.select('id', 'password')
+			results = await Auth0rRepo.knex.select('id', 'password')
 				.from('Users')
 				.where(this.user_identifier, user_id);
 		} catch (err) {
@@ -142,7 +142,7 @@ export class Auth0rRepo {
 				// passwords match!
 				const token = Auth0r.generateOpaqueKey();
 				try {
-					await knex.table('Users')
+					await Auth0rRepo.knex.table('Users')
 						.update({o: token})
 						.where('id', id);
 					// Success
@@ -164,7 +164,7 @@ export class Auth0rRepo {
 		const handleError = (prodError: Error, devError?: Error) =>
 			this.handleError(String(user_id), 'verifyOpaque', prodError, (devError) ? devError : prodError);
 
-		const results = await knex.table('Users')
+		const results = await Auth0rRepo.knex.table('Users')
 			.select('o')
 			.where('id', user_id);
 
@@ -176,7 +176,7 @@ export class Auth0rRepo {
 				}
 				request.body.o = Auth0r.generateOpaqueKey();
 				try {
-					await knex.table('Users')
+					await Auth0rRepo.knex.table('Users')
 						.update({o: request.body.o})
 						.where('id', user_id);
 					return true;
@@ -188,7 +188,7 @@ export class Auth0rRepo {
 				devError.name = 'UNAUTHORIZED_ACCESS';
 				handleError(this.errors.UNAUTHORIZED_ACCESS, devError);
 				try {
-					await knex.table('Users')
+					await Auth0rRepo.knex.table('Users')
 						.update({o: null})
 						.where('id', user_id);
 				} catch (err) {
@@ -227,7 +227,7 @@ export class Auth0rRepo {
 		};
 		userData[this.user_identifier] = user_id;
 		try {
-			await knex.table('Users')
+			await Auth0rRepo.knex.table('Users')
 				.insert(userData);
 			return user_id;
 		} catch (err) {
@@ -255,4 +255,3 @@ export class Auth0rRepo {
 		throw (dev) ? devError : prodError;
 	}
 }
-

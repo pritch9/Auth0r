@@ -4,7 +4,7 @@ import {expect} from 'chai';
 import * as crypto from 'crypto';
 import * as fs from 'fs';
 import * as jwt from 'jsonwebtoken';
-import Knex = require('knex');
+import Knex from 'knex';
 import * as path from 'path';
 import {Auth0r} from '../src';
 import {error, log} from '../src/Utilities/Utilities';
@@ -106,15 +106,15 @@ describe('Auth0r StartUp Suite', function() {
 			public_key: pub_key,
 			user_identifier: 'username',
 		});
-		const pub_contents = fs.readFileSync(pub_key, {encoding: 'UTF-8'});
-		const priv_contents = fs.readFileSync(pub_key, {encoding: 'UTF-8'});
+		const pub_contents = fs.readFileSync(pub_key, {encoding: 'utf-8'});
+		const priv_contents = fs.readFileSync(pub_key, {encoding: 'utf-8'});
 		expect(Auth0r.compareKeys(auth0r, pub_contents, priv_contents));
 	});
 	it('should use provided rsa key strings', async function() {
 		const pub_key = path.resolve(__dirname, './test_rsa_valid/pubkey.pem');
 		const priv_key = path.resolve(__dirname, './test_rsa_valid/privkey.pem');
-		const pub_contents = fs.readFileSync(pub_key, {encoding: 'UTF-8'});
-		const priv_contents = fs.readFileSync(priv_key, {encoding: 'UTF-8'});
+		const pub_contents = fs.readFileSync(pub_key, {encoding: 'utf-8'});
+		const priv_contents = fs.readFileSync(priv_key, {encoding: 'utf-8'});
 		const auth0r = new Auth0r({
 			connection,
 			issuer: '',
@@ -371,40 +371,30 @@ describe('Auth0r StartUp Suite', function() {
 		dbOpaque = dbOpaque[0].o;
 		expect(dbOpaque).to.equal(request.body.o);
 	});
-	it('should intercept unauthorized traffic and result in 403', async function() {
-		const test = async (token: string) => {
-			const auth0r = new Auth0r({
-				connection,
-				issuer: 'test',
-			});
-			const request = {
-				headers: {
-					authorization: token,
-				},
-				user: undefined,
-			};
-			const response = new MiddlewareResponse();
-			const next = new MiddlewareNext();
 
-			expect(await auth0r.middleware(request, response, () => next.run(request, response))).to.not.throw;
-			return {request, response, next};
-		};
-
-		const {request: req_null, response: res_null, next: next_null} = await test(null);
-		expect(next_null.ran).to.be.true;
-		expect(res_null.response).to.be.undefined;
+	it('should intercept traffic for null token', async function() {
+		const {request: req_null, response: res_null, next: next_null} = await basicTokenTest(connection, null);
+		expect(next_null.ran).to.be.false;
 		expect(req_null.user).to.be.undefined;
-
-		const {response: res_blank, next: next_blank} = await test('');
-		expect(next_blank.ran).to.be.false;
-		expect(res_blank.response).to.equal(401);
-
-		const {response: res_invalid, next: next_invalid} = await test('INVALID');
-		expect(next_invalid.ran).to.be.false;
-		expect(res_invalid.response).to.equal(401);
-
+		expect(res_null.response).to.be.equal(401);
 	});
+
+	it('should intercept traffic for blank token', async function() {
+		const {request: req_null, response: res_null, next: next_null} = await basicTokenTest(connection, '');
+		expect(next_null.ran).to.be.false;
+		expect(req_null.user).to.be.undefined;
+		expect(res_null.response).to.be.equal(401);
+	});
+
+	it('should intercept traffic for invalid token', async function() {
+		const {request: req_null, response: res_null, next: next_null} = await basicTokenTest(connection, 'INVALID');
+		expect(next_null.ran).to.be.false;
+		expect(req_null.user).to.be.undefined;
+		expect(res_null.response).to.be.equal(401);
+	});
+
 	it('should allow authorized traffic and return with new opaque key', async function() {
+		this.timeout(5000);
 		const auth0r = new Auth0r({
 			connection,
 			issuer: 'test',
@@ -436,10 +426,30 @@ describe('Auth0r StartUp Suite', function() {
 		expect(request.user).to.not.be.undefined;
 		expect(request.user).to.equal(user_id);
 	});
-	after(async function() {
+	after(function() {
 		deleteTestDatabase();
 	});
 });
+
+async function basicTokenTest(connection: any, token: string | null | undefined) {
+	const auth0r = new Auth0r({
+		connection,
+		issuer: 'test',
+	});
+	const request = {
+		headers: {
+			authorization: token,
+		},
+		user: undefined,
+	};
+	const response = new MiddlewareResponse();
+	const next = new MiddlewareNext();
+
+	log(`Before middleware: ${token}`);
+	expect(await auth0r.middleware(request, response, () => next.run(request, response))).to.not.throw;
+	log(`After middleware: ${token}`);
+	return {request, response, next};
+}
 
 function deleteTestDatabase() {
 	log(`Deleting ${test_db.toString()}`);
